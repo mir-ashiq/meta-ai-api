@@ -28,6 +28,9 @@ import time
 import requests
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+# Default constants
+DEFAULT_X_ASBD_ID = "359341"
+
 
 def extract_video_urls(obj: Any) -> List[str]:
     """
@@ -66,12 +69,8 @@ def try_parse_json(resp: requests.Response) -> Optional[Dict]:
     """
     try:
         return resp.json()
-    except ValueError:
-        # Some responses may be HTML or partial text; try a safe json.loads as fallback
-        try:
-            return json.loads(resp.text)
-        except Exception:
-            return None
+    except (ValueError, Exception):
+        return None
 
 
 def poll_for_completion(
@@ -81,6 +80,7 @@ def poll_for_completion(
     max_wait: int = 300,
     interval: float = 2.0,
     raise_on_error: bool = True,
+    max_consecutive_errors: int = 5,
 ) -> Tuple[List[str], Dict]:
     """
     Poll the GraphQL endpoint by POSTing poll_payload until we find video URLs or timeout.
@@ -91,6 +91,7 @@ def poll_for_completion(
     - max_wait: overall timeout in seconds.
     - interval: seconds between polls.
     - raise_on_error: whether to raise if we receive repeated non-200 responses.
+    - max_consecutive_errors: maximum number of consecutive errors before raising an exception.
 
     Returns: (list_of_urls, last_json_response)
     """
@@ -100,7 +101,7 @@ def poll_for_completion(
         r = session.post(graphql_url, data=poll_payload, timeout=60)
         if r.status_code != 200:
             consecutive_errors += 1
-            if raise_on_error and consecutive_errors >= 5:
+            if raise_on_error and consecutive_errors >= max_consecutive_errors:
                 raise RuntimeError(f"Received {consecutive_errors} consecutive non-200 responses (last: {r.status_code})")
         else:
             consecutive_errors = 0
@@ -147,7 +148,7 @@ if __name__ == "__main__":
     })
     s.headers.update({
         "x-fb-lsd": os.environ.get("X_FB_LSD", ""),
-        "x-asbd-id": os.environ.get("X_ASBD_ID", "359341"),
+        "x-asbd-id": os.environ.get("X_ASBD_ID", DEFAULT_X_ASBD_ID),
         "User-Agent": os.environ.get("USER_AGENT", "meta-ai-client/1.0"),
     })
 
